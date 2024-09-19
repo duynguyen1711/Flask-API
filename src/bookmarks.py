@@ -97,6 +97,57 @@ def my_bookmark():
     return jsonify({"bookmarks": bookmark_list}), 200
 
 
-@bookmarks.get("/avc")
-def update_bookmarks():
-    return jsonify()
+@bookmarks.put("/<int:id>")
+@jwt_required()
+def update_bookmarks(id):
+    current_user = get_jwt_identity()
+    bookmark = Bookmark.query.get_or_404(id)
+    if bookmark.user_id != current_user:
+        return jsonify({"error": "You are not authorized to update this bookmark"}), 403
+    data = request.get_json()
+    body = data.get("body")
+    url = data.get("url")
+    if body is not None:
+        bookmark.body = body
+    if url is not None:
+        if not validators.url(url):
+            return jsonify({"error": "URL is invalid"}), 400
+        bookmark.url = url
+    db.session.commit()
+    return (
+        jsonify(
+            {
+                "id": bookmark.id,
+                "user_id": bookmark.user_id,
+                "bookmark": {
+                    "body": bookmark.body,
+                    "url": bookmark.url,
+                    "short_url": bookmark.short_url,
+                    "visits": bookmark.visits,
+                    "created_at": bookmark.created_at,
+                    "updated_at": bookmark.updated_at,
+                },
+            }
+        ),
+        200,
+    )
+
+
+@bookmarks.delete("/<int:id>")
+@jwt_required()
+def delete_bookmark(id):
+    current_user_id = get_jwt_identity()
+
+    # Lấy bookmark theo ID
+    bookmark = Bookmark.query.get_or_404(id)
+
+    # Kiểm tra xem bookmark có thuộc về user hiện tại không
+    if bookmark.user_id != current_user_id:
+        return jsonify({"error": "You are not authorized to delete this bookmark"}), 403
+
+    # Xóa bookmark khỏi cơ sở dữ liệu
+    db.session.delete(bookmark)
+    db.session.commit()
+
+    # Trả về phản hồi thành công
+    return jsonify({"message": "Delete successful"}), 200
