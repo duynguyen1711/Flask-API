@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from src.auth import auth
 from src.bookmarks import bookmarks
 from src.database import db
+from flasgger import Swagger
 
 
 def create_app(test_config=None):
@@ -30,6 +31,7 @@ def create_app(test_config=None):
     db.init_app(app)
     JWTManager(app)
     mail.init_app(app)
+    swagger = Swagger(app)
     app.register_blueprint(auth)
     app.register_blueprint(bookmarks)
     # Looking to send emails in production? Check out our Email API/SMTP product!

@@ -1,31 +1,45 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, abort, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from src.database import db, Bookmark
 import validators
+from flasgger import swag_from
+from src.schema.bookmark_schema import BookmarkSchema
 
 bookmarks = Blueprint("bookmarks", __name__, url_prefix="/api/v1/bookmarks")
 
 
-@bookmarks.get("/")
-def get_all():
-    bookmarks = Bookmark.query.all()
-    bookmark_list = []
-    for bookmark in bookmarks:
-        bookmark_list.append(
-            {
-                "id": bookmark.id,
-                "body": bookmark.body,
-                "url": bookmark.url,
-                "short_url": bookmark.short_url,
-                "visits": bookmark.visits,
-                "user_id": bookmark.user_id,
-                "created_at": bookmark.created_at,
-                "updated_at": bookmark.updated_at,
+@bookmarks.route("/", methods=["GET"])
+@swag_from(
+    {
+        "responses": {
+            200: {
+                "description": "List of bookmarks",
+                "schema": BookmarkSchema(many=True).dict_class,
             }
-        )
+        }
+    }
+)
+def get_all():
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=3, type=int)
 
-    # Return the list of bookmarks as a JSON response
-    return jsonify({"bookmarks": bookmark_list}), 200
+    bookmarks_query = Bookmark.query.paginate(page=page, per_page=per_page)
+
+    bookmark_schema = BookmarkSchema(many=True)
+    result = bookmark_schema.dump(bookmarks_query.items)
+
+    return (
+        jsonify(
+            {
+                "bookmarks": result,
+                "total": bookmarks_query.total,
+                "page": bookmarks_query.page,
+                "pages": bookmarks_query.pages,
+                "per_page": bookmarks_query.per_page,
+            }
+        ),
+        200,
+    )
 
 
 @bookmarks.post("/")
@@ -151,3 +165,15 @@ def delete_bookmark(id):
 
     # Trả về phản hồi thành công
     return jsonify({"message": "Delete successful"}), 200
+
+
+@bookmarks.get("/short/<short_url>")
+def redirect_to_url(short_url):
+    bookmark = Bookmark.query.filter_by(short_url=short_url).first()
+    if bookmark is None:
+        return abort(404)
+
+    bookmark.visits += 1
+    db.session.commit()
+
+    return redirect(bookmark.url)
